@@ -247,7 +247,12 @@ int main(int argc, char** argv)
         passed = set(5, 0.0f);
         auto staticOutline = render(plugMain, instance, process, framebuffer);
         passed = passed && hasVisiblePixelOnColumn(staticOutline, TestWidth / 2, 80, 640);
-        passed = passed && set(5, 1.0f) && set(6, 0.0f);
+        passed = passed && set(5, 1.0f) && set(6, 0.0f) && set(13, 2.0f);
+        auto autoPhaseStart = render(plugMain, instance, process, framebuffer);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        auto autoPhaseMoved = render(plugMain, instance, process, framebuffer);
+        passed = passed && autoPhaseStart != autoPhaseMoved;
+        passed = passed && set(13, 0.0f) && set(6, 0.0f);
         auto phaseStart = render(plugMain, instance, process, framebuffer);
         passed = passed && set(6, 0.45f);
         auto phaseEnd = render(plugMain, instance, process, framebuffer);
@@ -266,6 +271,11 @@ int main(int argc, char** argv)
         auto previousStep = render(plugMain, instance, process, framebuffer);
         passed = passed && visiblePixels(previousStep, 64, 80, 640, 640) > 0 &&
             visiblePixels(previousStep, 640, 80, 1216, 640) > 0;
+        for (int click = 0; click < 12 && passed; ++click) {
+            passed = set(2, 1.0f);
+            auto repeatedStep = render(plugMain, instance, process, framebuffer);
+            passed = passed && visiblePixels(repeatedStep, 64, 80, 1216, 640) > 0;
+        }
         passed = passed && set(2, 0.0f) && set(5, 30.0f) && set(8, 0.25f) && set(4, 1.0f);
         auto blastStarted = render(plugMain, instance, process, framebuffer);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -278,7 +288,9 @@ int main(int argc, char** argv)
         auto resetFrame = render(plugMain, instance, process, framebuffer);
         passed = passed && visiblePixels(resetFrame, 64, 80, 640, 640) > 0;
     } else {
-        passed = set(4, 0.0f) && set(2, 0.0f) && set(6, 0.0f) && set(1, 0.05f);
+        auto defaultWipe = render(plugMain, instance, process, framebuffer);
+        passed = visiblePixels(defaultWipe, 64, 80, 640, 640) > 0;
+        passed = passed && set(4, 0.0f) && set(2, 0.0f) && set(6, 0.0f) && set(1, 0.05f);
         auto earlyWipe = render(plugMain, instance, process, framebuffer);
         passed = passed && set(1, 0.2f);
         auto laterWipe = render(plugMain, instance, process, framebuffer);

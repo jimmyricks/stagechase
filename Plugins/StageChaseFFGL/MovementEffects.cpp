@@ -738,7 +738,8 @@ class OutlineEffect final : public MovementEffectBase
 		LengthParameter,
 		CountParameter,
 		FlipParameter,
-		AlternateParameter
+		AlternateParameter,
+		SpeedParameter
 	};
 
 public:
@@ -755,6 +756,7 @@ public:
 		AddParam( ParamRange::CreateInteger( "Count", 1, { 1.0f, 32.0f } ) );
 		AddParam( Param::Create( "FlipDirection", FF_TYPE_BOOLEAN, 0.0f ) );
 		AddParam( Param::Create( "OddEven", FF_TYPE_BOOLEAN, 0.0f ) );
+		AddParam( ParamRange::Create( "Speed", 0.15f, { 0.0f, 2.0f } ) );
 		SetFragmentShader( R"(
 			uniform sampler2D stageMask;
 			uniform float SliceCount;
@@ -779,21 +781,23 @@ public:
 				}
 
 				float edgeDistance = Width + 1.0;
-		for (int ring = 1; ring <= 4; ++ring)
-		{
-			float radius = Width * float(ring) * 0.25;
-			if (edgeDistance <= radius)
-				break;
-			for (int direction = 0; direction < 8; ++direction)
-			{
-				float angle = 6.2831853 * float(direction) / 8.0;
-				vec2 offset = vec2(cos(angle), sin(angle)) * radius / resolution;
-				if (edgeAt(uv + offset, mask) > 0.5)
+				for (int ring = 4; ring >= 1; --ring)
 				{
-					edgeDistance = min(edgeDistance, radius);
-					break;
-				}
-			}
+					float radius = Width * float(ring) * 0.25;
+					bool boundaryFound = false;
+					for (int direction = 0; direction < 8; ++direction)
+					{
+						float angle = 6.2831853 * float(direction) / 8.0;
+						vec2 offset = vec2(cos(angle), sin(angle)) * radius / resolution;
+						if (edgeAt(uv + offset, mask) > 0.5)
+						{
+							boundaryFound = true;
+							break;
+						}
+					}
+					if (!boundaryFound)
+						break;
+					edgeDistance = radius;
 				}
 				float stroke = edgeDistance <= Width ? 1.0 : 0.0;
 				if (Feather > 0.0)
@@ -805,7 +809,8 @@ public:
 				float progress = fract(atan(uv.y - mask.b, uv.x - mask.g) / 6.2831853 + 1.0);
 				progress = reverse > 0.5 ? 1.0 - progress : progress;
 				float randomOffset = fract(sin(sliceIndex * 12.9898) * 43758.5453) * Randomise;
-				float position = fract(progress * Count + Fan * sliceIndex + randomOffset - Phase);
+				float movingPhase = fract(Phase + time * Speed);
+				float position = fract(progress * Count + Fan * sliceIndex + randomOffset - movingPhase);
 				if (Animate)
 					stroke *= step(position, Length);
 				fragColor = vec4(Color * stroke, stroke);
@@ -870,7 +875,7 @@ class BumperEffect final : public MovementEffectBase
 
 	struct Pulse
 	{
-		size_t stepIndex;
+		size_t sliceIndex;
 		float startTime;
 	};
 
@@ -916,17 +921,9 @@ protected:
 
 	void BuildMask() override
 	{
-		const Sequence* sequence = SelectedSequence( sequenceIndex );
-		if( sequence == nullptr || sequence->steps.empty() )
-			return;
 		size_t order = 0;
 		for( const Pulse& pulse : pulses )
-		{
-			if( pulse.stepIndex >= sequence->steps.size() )
-				continue;
-			for( size_t sliceIndex : sequence->steps[ pulse.stepIndex ].slices )
-				AppendPolygon( sliceIndex, pulse.stepIndex, order++, pulse.startTime );
-		}
+			AppendPolygon( pulse.sliceIndex, 0, order++, pulse.startTime );
 	}
 
 	void OnProjectChanged() override
@@ -1017,7 +1014,20 @@ protected:
 private:
 	void AddPulse( size_t stepIndex, bool countsAsActivity )
 	{
-		pulses.push_back( { stepIndex, timeNow } );
+		const Sequence* sequence = SelectedSequence( sequenceIndex );
+		if( sequence != nullptr && stepIndex < sequence->steps.size() )
+		{
+			for( size_t sliceIndex : sequence->steps[ stepIndex ].slices )
+			{
+				auto pulse = std::find_if( pulses.begin(), pulses.end(), [ sliceIndex ]( const Pulse& active ) {
+					return active.sliceIndex == sliceIndex;
+				} );
+				if( pulse == pulses.end() )
+					pulses.push_back( { sliceIndex, timeNow } );
+				else
+					pulse->startTime = timeNow;
+			}
+		}
 		if( countsAsActivity )
 		{
 			lastActivity = timeNow;
@@ -1058,7 +1068,7 @@ public:
 		phase( 0.0f )
 	{
 		AddParam( ParamRange::CreateInteger( "Sequence", 0, { 0.0f, 1023.0f } ) );
-		AddParam( ParamRange::Create( "Step", 0.0f, { 0.0f, 1.0f } ) );
+		AddParam( ParamRange::Create( "Step", 0.08f, { 0.0f, 1.0f } ) );
 		AddParam( ParamOption::Create( "Scaling", { { "Fill", 0.0f }, { "Mask", 1.0f } } ) );
 		AddParam( ParamRange::Create( "Length", 0.2f, { 0.01f, 1.0f } ) );
 		AddParam( ParamRange::Create( "Overlap", 0.0f, { 0.0f, 0.95f } ) );
