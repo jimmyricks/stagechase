@@ -1,0 +1,6 @@
+.DS_Store
+.build/
+.devin/config.local.json
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
